@@ -1,0 +1,4 @@
+* nightlight
+
+  This is a bash script for automatically setting the screen gamma and brightness based on daytime.
+  It is based on [[https://linuxconfig.org/how-to-obtain-sunrise-sunset-time-for-any-location-from-linux-command-line][this]] blog post.
