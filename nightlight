@@ -1,7 +1,12 @@
 #!/bin/sh
+# SETTINGS
+# Edit from here -->
+
 location="GMXX0128"  # Location code (get it from https://weather.codes/search/)
 displays=("eDP-1-1") # Displays e.g. ("eDP-1-1" "eDP-1-2") (get displays with "xrandr --listmonitors")
 window=60            # Fading window in minutes
+
+# <-- to here
 
 if ! command -v wget &> /dev/null
 then
@@ -10,6 +15,10 @@ then
 elif ! command -v bc &> /dev/null
 then
     echo -ne "\e[1mbc\e[0m was not found, please install it"
+    exit 1
+elif ! command -v xrandr &> /dev/null
+then
+    echo -ne "\e[1mxrandr\e[0m was not found, are you using X.Org?"
     exit 1
 fi
 
