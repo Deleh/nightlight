@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# Settings
+location="GMXX0128" # Location code (get it from https://weather.codes/search/)
+interval=60 # Interval in minutes
+displays=("eDP-1-1") # Displays e.g. ("eDP-1-1" "eDP-1-2") (get displays with "xrandr --listmonitors")
+
+tmpfile=/tmp/$location
+interval=$(( $interval * 30 ))
+
+# Obtain sunrise and sunset raw data from weather.com
+function update_times {
+    wget -q "https://weather.com/weather/today/l/$location" -O "$tmpfile"
+
+    SUNR=$(grep SunriseSunset "$tmpfile" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | head -1)
+    SUNS=$(grep SunriseSunset "$tmpfile" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | tail -1)
+
+    sunrise=$(date --date="$SUNR" +%s)
+    sunset=$(date --date="$SUNS" +%s)
+
+    echo "updated"
+}
+
+# Set dim value based on current time
+function set_value {
+
+    now=$(date +%s)
+
+    # TODO: Do with arithmetics
+    if (( $now <= $sunrise - $interval )); then # Night - pre day
+	value=$(( 2 * $interval ))
+    elif (( $now > $sunrise - $interval )) && (( $now < $sunrise + $interval )); then # Sun rising
+	value=$(( (2 * $interval) - ($now - ($sunrise - $interval)) ))
+    else
+	if (( $now <= $sunset - $interval )); then # Day
+	    value=0
+	elif (( $now > $sunset - $interval )) && (( $now < $sunset + $interval )); then # Sun setting
+	    value=$(( $now - ($sunset - $interval) ))
+	else # Night - after day
+	    value=$(( 2 * $interval ))
+	fi
+    fi
+
+    # Scale dim value in [0:1]
+    value=$(echo "$value / (2.0 * $interval)" | bc -l)
+
+}
+    
+# Set display gamma and brightness with current value
+function set_display {
+
+    red=1.0
+    green=$(echo "1.0 - (0.1 * $value)" | bc -l)
+    blue=$(echo "1.0 - (0.2 * $value)" | bc -l)
+    brightness=$(echo "1.0 - (0.2 * $value)" | bc -l)
+
+    # Set nightlight for all displays
+    for d in ${displays[@]}; do
+	xrandr --output $d --gamma $red:$green:$blue --brightness $brightness
+    done
+    
+}
+
+update_times
+while true; do
+    set_value
+    set_display
+    sleep 60
+    echo "loop"
+done
