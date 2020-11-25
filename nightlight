@@ -18,7 +18,7 @@ then
     exit 1
 elif ! command -v xrandr &> /dev/null
 then
-    echo -ne "\e[1mxrandr\e[0m was not found, are you using X.Org?"
+    echo -ne "\e[1mxrandr\e[0m was not found, are you running the X.Org Server?"
     exit 1
 fi
 
