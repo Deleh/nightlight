@@ -10,7 +10,7 @@
 
 ** Usage
 
-   1. Make sure the [[*Requirements][requirements]] are fulfilled
+   1. Make sure the [[#requirements][requirements]] are fulfilled
    2. Obtain your location code from [[https://weather.codes/search/][here]] and paste it into the script
    3. Get the IDs of your displays with =xrandr --listmonitors= and paste them into the script
    4. (Optionally) set the fading window which specifies the amount of minutes in which the screen is dimmed
@@ -39,6 +39,9 @@
      #+END_SRC
   
 ** Requirements
+   :PROPERTIES:
+   :CUSTOM_ID: requirements
+   :END:
    
    - [[https://www.gnu.org/software/wget/][Wget]] :: Used for getting sunrise and sunset times
    - [[https://www.gnu.org/software/bc/][bc]] :: Used for floating point calculations
