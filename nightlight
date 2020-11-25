@@ -1,52 +1,63 @@
 #!/bin/sh
-
-# Settings
-location="GMXX0128" # Location code (get it from https://weather.codes/search/)
-interval=60 # Interval in minutes
+location="GMXX0128"  # Location code (get it from https://weather.codes/search/)
 displays=("eDP-1-1") # Displays e.g. ("eDP-1-1" "eDP-1-2") (get displays with "xrandr --listmonitors")
+window=60            # Fading window in minutes
 
-tmpfile=/tmp/$location
-interval=$(( $interval * 30 ))
+if ! command -v wget &> /dev/null
+then
+    echo -ne "\e[1mwget\e[0m was not found, please install it"
+    exit 1
+elif ! command -v bc &> /dev/null
+then
+    echo -ne "\e[1mbc\e[0m was not found, please install it"
+    exit 1
+fi
 
-# Obtain sunrise and sunset raw data from weather.com
-function update_times {
-    wget -q "https://weather.com/weather/today/l/$location" -O "$tmpfile"
+file=/tmp/$location
 
-    SUNR=$(grep SunriseSunset "$tmpfile" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | head -1)
-    SUNS=$(grep SunriseSunset "$tmpfile" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | tail -1)
+window=$(( $window * 30 ))
+
+function get_times {
+
+    wget -q "https://weather.com/weather/today/l/$location" -O "$file"
+
+    SUNR=$(grep SunriseSunset "$file" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | head -1)
+    SUNS=$(grep SunriseSunset "$file" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | tail -1)
 
     sunrise=$(date --date="$SUNR" +%s)
     sunset=$(date --date="$SUNS" +%s)
 
-    echo "updated"
 }
 
-# Set dim value based on current time
-function set_value {
+function set_dim_value {
 
+    # Get current time
     now=$(date +%s)
 
-    # TODO: Do with arithmetics
-    if (( $now <= $sunrise - $interval )); then # Night - pre day
-	value=$(( 2 * $interval ))
-    elif (( $now > $sunrise - $interval )) && (( $now < $sunrise + $interval )); then # Sun rising
-	value=$(( (2 * $interval) - ($now - ($sunrise - $interval)) ))
+    # Night - pre day
+    if (( $now <= $sunrise - $window )); then
+	value=$(( 2 * $window ))
+    # Sun rising
+    elif (( $now > $sunrise - $window )) && (( $now < $sunrise + $window )); then
+	value=$(( (2 * $window) - ($now - ($sunrise - $window)) ))
     else
-	if (( $now <= $sunset - $interval )); then # Day
+	# Day
+	if (( $now <= $sunset - $window )); then
 	    value=0
-	elif (( $now > $sunset - $interval )) && (( $now < $sunset + $interval )); then # Sun setting
-	    value=$(( $now - ($sunset - $interval) ))
-	else # Night - after day
-	    value=$(( 2 * $interval ))
+	# Sun setting
+	elif (( $now > $sunset - $window )) && (( $now < $sunset + $window )); then
+	    value=$(( $now - ($sunset - $window) ))
+	# Night - after day
+	else
+	    value=$(( 2 * $window ))
 	fi
     fi
 
     # Scale dim value in [0:1]
-    value=$(echo "$value / (2.0 * $interval)" | bc -l)
+    value=$(echo "$value / (2.0 * $window)" | bc -l)
 
 }
-    
-# Set display gamma and brightness with current value
+
 function set_display {
 
     red=1.0
@@ -58,13 +69,20 @@ function set_display {
     for d in ${displays[@]}; do
 	xrandr --output $d --gamma $red:$green:$blue --brightness $brightness
     done
-    
+
 }
 
-update_times
+function log {
+    log_time=$(date '+%H:%M')
+    echo -ne "[\e[1m$log_time\e[0m] $1"
+}
+
+echo -ne "\n..:: \e[1mnightlight\e[0m ::..\n\n"
+get_times
+log "got sunrise and sunset values\n"
 while true; do
-    set_value
+    set_dim_value
     set_display
+    log "applied display values\r"
     sleep 60
-    echo "loop"
 done

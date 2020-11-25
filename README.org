@@ -1,4 +1,190 @@
 * nightlight
+  :PROPERTIES:
+  :header-args: :tangle nightlight :shebang "#!/bin/sh"
+  :END:
 
-  This is a bash script for automatically setting the screen gamma and brightness based on daytime.
-  It is based on [[https://linuxconfig.org/how-to-obtain-sunrise-sunset-time-for-any-location-from-linux-command-line][this]] blog post.
+  This is a shell script for automatically setting the screen colors and brightness based on daytime.
+
+  The script is created via literate programming.
+  You can find the code below.
+
+** Usage
+
+   1. Obtain your location code from [[https://weather.codes/search/][here]] and paste it into the script
+   2. Get the IDs of your displays with =xrandr --listmonitors= and paste them into the script
+   3. (Optionally) set the fading window which specifies the amount of minutes in which the screen is dimmed
+   4. Make sure the script is executable (=chmod +x nightlight=) and run it with =./nightlight=
+
+   If you are unhappy with the display settings, you can revert them always by stopping the script and calling the following command manually.
+   Please adjust your display ID and call for every display seperately.
+
+   #+BEGIN_EXAMPLE sh
+     xrandr --output <DISPLAY_ID> --gamma 1:1:1 --brightness 1
+   #+END_EXAMPLE
+
+** Configuration
+
+   Configuration is currently done via editing the script directly or editing this file and then tangling it with Emacs (=C-c C-v t=).
+   
+   #+BEGIN_SRC sh
+     location="GMXX0128"  # Location code (get it from https://weather.codes/search/)
+     displays=("eDP-1-1") # Displays e.g. ("eDP-1-1" "eDP-1-2") (get displays with "xrandr --listmonitors")
+     window=60            # Fading window in minutes
+   #+END_SRC
+  
+** Requirements
+
+   - [[https://www.gnu.org/software/wget/][Wget]] :: Used for getting sunrise and sunset times
+   - [[https://www.gnu.org/software/bc/][bc]] :: Used for floating point calculations
+   - [[https://xorg.freedesktop.org/][xrandr]] :: Used for setting screen colors and brightess, usually shipped with X.Org
+
+   To make sure that all requirements are fulfilled, we check them before doing anything else.
+
+   #+BEGIN_SRC sh
+     if ! command -v wget &> /dev/null
+     then
+	 echo -ne "\e[1mwget\e[0m was not found, please install it"
+	 exit 1
+     elif ! command -v bc &> /dev/null
+     then
+	 echo -ne "\e[1mbc\e[0m was not found, please install it"
+	 exit 1
+     fi
+   #+END_SRC
+
+** Local variables
+
+   The file containig the sunrise and sunset is stored in =/tmp=.
+
+   #+BEGIN_SRC sh
+     file=/tmp/$location
+   #+END_SRC
+
+   To make calculations easier, we scale the fading window down to seconds (=* 60=) and divide it in half (=* 0.5=).
+   This results in a multiplication with =30=.
+
+   #+BEGIN_SRC sh
+     window=$(( $window * 30 ))
+   #+END_SRC
+
+   The following variables are also used in the script, but not initialized.
+   For the sake of completion they are described here.
+
+   - =sunrise= :: Time in seconds since the Unix epoch until sunrise
+   - =sunset= :: Time in seconds since the Unix epoch until sunset
+   - =now= :: Time in seconds since the Unix epoch until now
+   - =value= :: Dim value in range [0:1] (0 at day, 1 at night, values in between if in interval around sunrise or sunset)
+
+** Get times
+
+   The times for sunrise and sunset are fetched from [[https://weather.com/][weather.com]].
+   To filter out the exact values from the response, the regular expressions from [[https://linuxconfig.org/how-to-obtain-sunrise-sunset-time-for-any-location-from-linux-command-line][this]] blog post are used.
+
+   #+BEGIN_SRC sh
+     function get_times {
+
+	 wget -q "https://weather.com/weather/today/l/$location" -O "$file"
+
+	 SUNR=$(grep SunriseSunset "$file" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | head -1)
+	 SUNS=$(grep SunriseSunset "$file" | grep -oE '((1[0-2]|0?[1-9]):([0-5][0-9]) ?([AaPp][Mm]))' | tail -1)
+
+	 sunrise=$(date --date="$SUNR" +%s)
+	 sunset=$(date --date="$SUNS" +%s)
+
+     }
+   #+END_SRC
+
+** Set dim value
+
+   The dim value is based on the current time, the sunrise and sunset.
+   This is a mess and should be done with arithmetics, but it works for now.
+
+   Finally the value is scaled into range [0,1].
+
+   #+BEGIN_SRC sh
+     function set_dim_value {
+
+	 # Get current time
+	 now=$(date +%s)
+
+	 # Night - pre day
+	 if (( $now <= $sunrise - $window )); then
+	     value=$(( 2 * $window ))
+	 # Sun rising
+	 elif (( $now > $sunrise - $window )) && (( $now < $sunrise + $window )); then
+	     value=$(( (2 * $window) - ($now - ($sunrise - $window)) ))
+	 else
+	     # Day
+	     if (( $now <= $sunset - $window )); then
+		 value=0
+	     # Sun setting
+	     elif (( $now > $sunset - $window )) && (( $now < $sunset + $window )); then
+		 value=$(( $now - ($sunset - $window) ))
+	     # Night - after day
+	     else
+		 value=$(( 2 * $window ))
+	     fi
+	 fi
+
+	 # Scale dim value in [0:1]
+	 value=$(echo "$value / (2.0 * $window)" | bc -l)
+    
+     }
+   #+END_SRC
+   
+
+** Set display
+
+   For setting the display values, we need to calculate the current RGB colors and brightness.
+   Values for all displays are set according to the following table.
+
+   |            | Night (=value 1=) | Day (=value 0=) |
+   |------------+-------------------+-----------------|
+   | Red        |               1.0 |             1.0 |
+   | Green      |               0.9 |             1.0 |
+   | Blue       |               0.8 |             1.0 |
+   | Brightness |               0.8 |             1.0 |
+
+   #+BEGIN_SRC sh
+     function set_display {
+
+	 red=1.0
+	 green=$(echo "1.0 - (0.1 * $value)" | bc -l)
+	 blue=$(echo "1.0 - (0.2 * $value)" | bc -l)
+	 brightness=$(echo "1.0 - (0.2 * $value)" | bc -l)
+
+	 # Set nightlight for all displays
+	 for d in ${displays[@]}; do
+	     xrandr --output $d --gamma $red:$green:$blue --brightness $brightness
+	 done
+    
+     }
+   #+END_SRC
+
+** Log
+
+   To make it easier to follow the script, a timestamp is prefixed on every logging output.
+
+   #+BEGIN_SRC sh
+     function log {
+	 log_time=$(date '+%H:%M')
+	 echo -ne "[\e[1m$log_time\e[0m] $1"
+     }
+   #+END_SRC
+   
+** Main
+
+   At first the times are updated.
+   Then the current display values are applied every minute.
+
+   #+BEGIN_SRC sh
+     echo -ne "\n..:: \e[1mnightlight\e[0m ::..\n\n"
+     get_times
+     log "got sunrise and sunset values\n"
+     while true; do
+	 set_dim_value
+	 set_display
+	 log "applied display values\r"
+	 sleep 60
+     done
+   #+END_SRC
