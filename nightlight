@@ -45,21 +45,21 @@ function set_dim_value {
 
     # Night - pre day
     if (( $now <= $sunrise - $window )); then
-	value=$(( 2 * $window ))
+         value=$(( 2 * $window ))
     # Sun rising
     elif (( $now > $sunrise - $window )) && (( $now < $sunrise + $window )); then
-	value=$(( (2 * $window) - ($now - ($sunrise - $window)) ))
+         value=$(( (2 * $window) - ($now - ($sunrise - $window)) ))
     else
-	# Day
-	if (( $now <= $sunset - $window )); then
-	    value=0
-	# Sun setting
-	elif (( $now > $sunset - $window )) && (( $now < $sunset + $window )); then
-	    value=$(( $now - ($sunset - $window) ))
-	# Night - after day
-	else
-	    value=$(( 2 * $window ))
-	fi
+        # Day
+        if (( $now <= $sunset - $window )); then
+            value=0
+        # Sun setting
+        elif (( $now > $sunset - $window )) && (( $now < $sunset + $window )); then
+            value=$(( $now - ($sunset - $window) ))
+        # Night - after day
+        else
+            value=$(( 2 * $window ))
+        fi
     fi
 
     # Scale dim value in [0:1]
@@ -76,7 +76,7 @@ function set_display {
 
     # Set nightlight for all displays
     for d in ${displays[@]}; do
-	xrandr --output $d --gamma $red:$green:$blue --brightness $brightness
+        xrandr --output $d --gamma $red:$green:$blue --brightness $brightness
     done
 
 }
